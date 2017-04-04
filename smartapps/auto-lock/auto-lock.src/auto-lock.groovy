@@ -1,179 +1,70 @@
-/**
- *  Auto-locking door app for the house
- *
- *  Author: stevenascott@gmail.com
- *  Date: 2015 12 06
- *  Version: Beta 0.2
- */
-
-
-// Automatically generated. Make future change here.
 definition(
-    name: "Club Steve AutoLock",
-    namespace: "",
-    author: "Steven Scott",
-    description: "Automatically lock the doors, even if we're home",
-    category: "My Apps",
-    iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
-    iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience%402x.png",
-    iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience%402x.png")
+    name: "Auto Lock",
+    namespace: "Lock Auto Super Non Enhanced",
+    author: "Arnaud",
+    description: "Automatically locks a specific door after X minutes when closed  and unlocks it when open after X seconds.",
+    category: "Safety & Security",
+    iconUrl: "http://www.gharexpert.com/mid/4142010105208.jpg",
+    iconX2Url: "http://www.gharexpert.com/mid/4142010105208.jpg"
+)
 
-preferences
-{
-	section ("Auto-Lock...")
-    	{
-		input "contact0", "capability.contactSensor", title: "Which door?"
-        	input "lock0","capability.lock", title: "Which lock?"
-        	input "autolock_delay", "number", title: "Delay for auto-Lock after door is closed? (Seconds)"
-        	input "relock_delay", "number", title: "Delay for re-lock w/o opening door? (Seconds)"
-        	input "leftopen_delay", "number", title: "Notify if door open for X seconds."
-            input "push_enabled", "enum", title: "Enable NORMAL push notifications?", metadata: [values: ["Yes","No"]]
-            input "debug_notify", "enum", title: "Enable DEBUG push notifications?", metadata: [values: ["Yes","No"]]
+preferences{
+    section("Select the door lock:") {
+        input "lock1", "capability.lock", required: true
+    }
+    section("Select the door contact sensor:") {
+    	input "contact", "capability.contactSensor", required: true
+    }
+    section("Automatically lock the door when closed...") {
+        input "minutesLater", "number", title: "Delay (in minutes):", required: true
+    }
+    section( "Notifications" ) {
+		input "sendPushMessage", "enum", title: "Send a push notification?", metadata:[values:["Yes", "No"]], required: false
+		input "phoneNumber", "phone", title: "Enter phone number to send text notification.", required: false
+	}
+}
+
+def installed(){
+    initialize()
+}
+
+def updated(){
+    unsubscribe()
+    unschedule()
+    initialize()
+}
+
+def initialize(){
+    log.debug "Settings: ${settings}"
+    subscribe(lock1, "lock", doorHandler, [filterEvents: false])
+    subscribe(contact, "contact.open", doorHandler)
+	subscribe(contact, "contact.closed", doorHandler)
+}
+
+def lockDoor(){
+    log.debug "Locking the door."
+    lock1.lock()
+    log.debug ( "Sending Push Notification..." )
+    if ( sendPushMessage != "No" ) sendPush( "${lock1} locked after ${contact} was closed for ${minutesLater} minutes!" )
+    log.debug("Sending text message...")
+    if ( phoneNumber != "0" ) sendSms( phoneNumber, "${lock1} locked after ${contact} was closed for ${minutesLater} minutes!" )
+}
+
+def doorHandler(evt){
+	if ((contact.latestValue("contact") == "closed") && (evt.value == "locked")) { // If the door is closed and a person manually locks it then...
+        unschedule( lockDoor ) // ...we don't need to lock it later.
+    }
+    else if ((contact.latestValue("contact") == "closed") && (evt.value == "unlocked")) { // If the door is closed and a person unlocks it then...
+        def delay = (minutesLater * 60) // runIn uses seconds
+        runIn( delay, lockDoor ) // ...schedule (in minutes) to lock.
+    }
+    else if ((lock1.latestValue("lock") == "unlocked") && (evt.value == "open")) { // If a person opens an unlocked door...
+        unschedule( lockDoor ) // ...we don't need to lock it later.
+    }
+    else if ((lock1.latestValue("lock") == "unlocked") && (evt.value == "closed")) { // If a person closes an unlocked door...
+        def delay = (minutesLater * 60) // runIn uses seconds
+        runIn( delay, lockDoor ) // ...schedule (in minutes) to lock.
+	}
+    else { //Opening or Closing door when locked (in case you have a handle lock)
     	}
-}
-
-def installed()
-{
-	initialize()
-}
-
-def updated()
-{
-	log.debug "Updating"
-	unsubscribe()
-	unschedule()
-	initialize()
-}
-
-def initialize()
-{
-	log.debug "Initializing"
-
-    subscribe(lock0, "lock", door_handler, [filterEvents: false])
-    subscribe(lock0, "unlock", door_handler, [filterEvents: false])
-    subscribe(contact0, "contact.open", door_handler)
-	subscribe(contact0, "contact.closed", door_handler)
-}
-
-def debug_handler(msg)
-{
-	log.debug msg
-	if(debug_notify == "Yes")
-    {
-    	sendPush msg
-    }
-}
-
-def push_handler(msg)
-{
-	if(push_enabled == "Yes")
-    {
-    	sendPush msg
-    }
-}
-
-def door_handler(evt)
-{
-	if(evt.value == "closed")
-    {
-		unschedule( lock_door )
-    	unschedule( notify_door_left_open )
-        state.lockattempts = 0
-
-        if(autolock_delay == 0)
-        {
-        	debug_handler("$contact0 closed, locking IMMEDIATELY.")
-        	lock_door()
-        }
-        else
-        {
-        	debug_handler("$contact0 closed, locking after $autolock_delay seconds.")
-			runIn(autolock_delay, "lock_door")
-        }
-	}
-	if(evt.value == "open")
-	{
-		unschedule( lock_door )
-        unschedule( notify_door_left_open )
-        unschedule( check_door_actually_locked )
-        state.lockattempts = 0 // reset the counter due to door being opened
-        debug_handler("$contact0 has been opened.")
-	 	runIn(leftopen_delay, "notify_door_left_open")
-	}
-
-	if(evt.value == "unlocked")
-	{
-    	unschedule( lock_door )
-        unschedule( check_door_actually_locked )
-        state.lockattempts = 0 // reset the counter due to manual unlock
-    	debug_handler("$lock0 was unlocked.")
-        debug_handler("Re-locking in $relock_delay seconds, assuming door remains closed.")
-        runIn(relock_delay, "lock_door")
-	}
-	if(evt.value == "locked") // since the lock is reporting LOCKED, action stops.
-	{
-    	unschedule( lock_door )
-    	debug_handler("$lock0 reports: LOCKED")
-	}
-}
-
-def lock_door() // auto-lock specific
-{
-	if (contact0.latestValue("contact") == "closed")
-	{
-		lock0.lock()
-    	debug_handler("Sending lock command to $lock0.")
-        pause(10000)
-        check_door_actually_locked()     // wait 10 seconds and check thet status of the lock
-	}
-	else
-	{
-    	unschedule( lock_door )
-    	debug_handler("$contact0 is still open, trying to lock $lock0 again in 30 seconds")
-        runIn(30, "lock_door")
-	}
-}
-
-def check_door_actually_locked() // if locked, reset lock-attempt counter. If unlocked, try once, then notify the user
-{
-	if (lock0.latestValue("lock") == "locked")
-    {
-    	state.lockattempts = 0
-    	debug_handler("Double-checking $lock0: LOCKED")
-        unschedule( lock_door )
-        unschedule( check_door_actually_locked )
-        if(state.lockstatus == "failed")
-        {
-        	debug_handler("$lock0 has recovered and is now locked!")
-        	push_handler("$lock0 has recovered and is now locked!")
-            state.lockstatus = "okay"
-        }
-    }
-    else // if the door doesn't show locked, try again
-    {
-    	if (contact0.latestValue("contact") == "closed") // just a double-check, since the door can be opened quickly.
-        {
-            state.lockattempts = state.lockattempts + 1
-            if ( state.lockattempts < 2 )
-            {
-                unschedule( lock_door )
-                debug_handler("$lock0 lock attempt #$state.lockattempts of 2 failed.")
-                runIn(15, "lock_door")
-            }
-            else
-            {
-                debug_handler("ALL Locking attempts FAILED! Check out $lock0 immediately!")
-                push_handler("ALL Locking attempts FAILED! Check out $lock0 immediately!")
-                state.lockstatus = "failed"
-                unschedule( lock_door )
-                unschedule( check_door_actually_locked )
-            }
-        }
-	}
-}
-
-def notify_door_left_open()
-{
-	debug_handler("$contact0 has been left open for $leftopen_delay seconds.")
-	push_handler("$contact0 has been left open for $leftopen_delay seconds.")
 }
