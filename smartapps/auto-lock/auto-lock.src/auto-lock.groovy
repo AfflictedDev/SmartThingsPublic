@@ -8,7 +8,7 @@ definition(
     iconX2Url: "http://www.gharexpert.com/mid/4142010105208.jpg"
 )
 
-preferences{6
+preferences{
     section("Select the door lock:") {
         input "lock1", "capability.lock", required: true
     }
