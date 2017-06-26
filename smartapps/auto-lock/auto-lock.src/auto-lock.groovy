@@ -45,6 +45,7 @@ def lockDoor(){
     log.debug "Locking the door."
     lock1.lock()
     log.debug ( "Sending Push Notification..." )
+    log.debug ( "sendPushMessage value: ${sendPushMessage}" )
     if ( sendPushMessage != "No" ) sendPush( "${lock1} locked after ${contact} was closed for ${minutesLater} minutes!" )
     log.debug("Sending text message...")
     if ( phoneNumber != "0" ) sendSms( phoneNumber, "${lock1} locked after ${contact} was closed for ${minutesLater} minutes!" )
