@@ -1,8 +1,8 @@
 definition(
     name: "Auto Lock",
-    namespace: "Lock Auto Super Non Enhanced",
-    author: "Arnaud",
-    description: "Automatically locks a specific door after X minutes when closed  and unlocks it when open after X seconds.",
+    namespace: "auto-lock",
+    author: "scnewma",
+    description: "Automatically locks a specific door after X minutes when closed.",
     category: "Safety & Security",
     iconUrl: "http://www.gharexpert.com/mid/4142010105208.jpg",
     iconX2Url: "http://www.gharexpert.com/mid/4142010105208.jpg"
@@ -19,7 +19,7 @@ preferences{
         input "minutesLater", "number", title: "Delay (in minutes):", required: true
     }
     section( "Notifications" ) {
-		input "sendPushMessage", "enum", title: "Send a push notification?", metadata:[values:["Yes", "No"]], required: false
+		input "sendPushMessage", "enum", title: "Send a push notification?", options: ["Yes", "No"], required: false
 		input "phoneNumber", "phone", title: "Enter phone number to send text notification.", required: false
 	}
 }
@@ -44,11 +44,17 @@ def initialize(){
 def lockDoor(){
     log.debug "Locking the door."
     lock1.lock()
-    log.debug ( "Sending Push Notification..." )
-    log.debug ( "sendPushMessage value: ${sendPushMessage}" )
-    if ( sendPushMessage != "No" ) sendPush( "${lock1} locked after ${contact} was closed for ${minutesLater} minutes!" )
-    log.debug("Sending text message...")
-    if ( phoneNumber != "0" ) sendSms( phoneNumber, "${lock1} locked after ${contact} was closed for ${minutesLater} minutes!" )
+    
+    // "No" is the second argument to the options so index of '1' === "No"
+    if ( (sendPushMessage as Integer) != 1 ) {
+        log.debug ( "Sending Push Notification..." + sendPushMessage )
+    	sendPush( "${lock1} locked after ${contact} was closed for ${minutesLater} minutes!" )
+    }
+    
+    if ( phoneNumber != "0" ) {
+        log.debug("Sending text message...")
+    	sendSms( phoneNumber, "${lock1} locked after ${contact} was closed for ${minutesLater} minutes!" )
+    }
 }
 
 def doorHandler(evt){
